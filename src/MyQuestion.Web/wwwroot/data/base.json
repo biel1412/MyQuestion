@@ -140,7 +140,12 @@
         "validade do comprovante",
         "últimos 90 dias",
         "iptu",
-        "correspondência"
+        "correspondência",
+        "em nome do pai",
+        "em nome da mãe",
+        "em nome de terceiro",
+        "em nome de terceiros",
+        "titularidade do comprovante"
       ]
     },
     {
@@ -457,16 +462,10 @@
       "url": "https://grupometa.sharepoint.com/:o:/s/Sicoob-BPO/IgAVvdvp-12nSbBTUJOQCjmkAS4u6e8FhEPAeEee_x7yuh4?e=QSM3ly",
       "palavrasChave": [
         "relacionamento pf",
-        "relacionamento",
         "abertura de conta",
         "conta corrente",
         "conta poupança",
         "conta salário",
-        "associação",
-        "associado",
-        "cooperado",
-        "matrícula",
-        "capital",
         "integralização",
         "atualização cadastral",
         "renovação cadastral",
@@ -478,8 +477,7 @@
         "cartão de crédito",
         "cheque especial",
         "pacote de serviços",
-        "visão do associado",
-        "vínculo"
+        "visão do associado"
       ]
     },
     {
@@ -491,16 +489,10 @@
       "url": "https://insiglobal.sharepoint.com/:o:/s/Sicoob-BPO/IgDjUIEJR6XOSZBpG7PUmOx3AadAC8EBxHaNLZ4FBKoHT1w?e=ipG9th",
       "palavrasChave": [
         "relacionamento pj",
-        "relacionamento",
         "abertura de conta pj",
         "conta pj",
         "conta empresa",
         "conta corrente",
-        "associação",
-        "associado",
-        "cooperado",
-        "matrícula",
-        "capital",
         "integralização",
         "atualização cadastral",
         "renovação cadastral",
@@ -512,7 +504,6 @@
         "maquininha",
         "cobrança",
         "boleto",
-        "vínculo",
         "grupo econômico"
       ]
     },

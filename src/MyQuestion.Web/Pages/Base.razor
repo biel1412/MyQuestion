@@ -1,0 +1,115 @@
+@page "/base"
+@inject KnowledgeBaseService KnowledgeBase
+
+<PageTitle>Base de regras · MyQuestion</PageTitle>
+
+<section class="hero">
+    <h1>Base de regras</h1>
+    <p>Manuais da Central de Regramento e os termos usados para reconhecer cada assunto.
+       A base fica no arquivo <code>src/MyQuestion.Web/wwwroot/data/base.json</code> do repositório.</p>
+</section>
+
+@if (erro is not null)
+{
+    <div class="alert error">Não foi possível carregar a base: @erro</div>
+}
+else if (engine is null)
+{
+    <div class="loading-inline">Carregando base…</div>
+}
+else
+{
+    <div class="stats">
+        <div class="stat"><strong>@engine.Base.Manuais.Count</strong><span>manuais</span></div>
+        <div class="stat"><strong>@engine.Base.Manuais.Sum(m => m.PalavrasChave.Count)</strong><span>termos de busca</span></div>
+        <div class="stat"><strong>@engine.Base.Regras.Count</strong><span>trechos de regra</span></div>
+        <div class="stat"><strong>@(engine.Base.AtualizadoEm ?? "—")</strong><span>última atualização</span></div>
+    </div>
+
+    <div class="toolbar">
+        <input class="search" type="search" placeholder="Filtrar manual ou termo…" @bind="filtro" @bind:event="oninput" />
+    </div>
+
+    <div class="manual-grid">
+        @foreach (var m in Filtrados)
+        {
+            var qtdRegras = engine.Base.Regras.Count(r => string.Equals(r.Manual, m.Id, StringComparison.OrdinalIgnoreCase));
+            <article class="manual-card">
+                <header>
+                    <span class="category">@m.Categoria</span>
+                    @if (!string.IsNullOrEmpty(m.Publico))
+                    {
+                        <span class="chip small">@m.Publico</span>
+                    }
+                </header>
+                <h2>@m.Titulo</h2>
+                <p>@m.Descricao</p>
+                <div class="chips">
+                    @foreach (var k in m.PalavrasChave.Take(expandidos.Contains(m.Id) ? 999 : 12))
+                    {
+                        <span class="chip small">@k</span>
+                    }
+                    @if (m.PalavrasChave.Count > 12)
+                    {
+                        <button type="button" class="link-button" @onclick="() => Alternar(m.Id)">
+                            @(expandidos.Contains(m.Id) ? "ver menos" : $"+{m.PalavrasChave.Count - 12} termos")
+                        </button>
+                    }
+                </div>
+                <footer>
+                    <span class="muted"><code>@m.Id</code> · @qtdRegras @(qtdRegras == 1 ? "trecho" : "trechos")</span>
+                    <a href="@m.Url" target="_blank" rel="noopener noreferrer">Abrir ↗</a>
+                </footer>
+            </article>
+        }
+    </div>
+
+    <section class="panel how-to">
+        <h2>Como deixar as respostas mais precisas</h2>
+        <p>Os manuais ficam no SharePoint da empresa, que exige login, então o site não consegue ler o conteúdo deles sozinho.
+           Para o sistema responder com o <strong>texto da regra</strong> (e não só indicar o manual), copie os trechos importantes do OneNote
+           para a lista <code>regras</code> do <code>base.json</code>. Use o <code>id</code> do manual mostrado em cada cartão acima:</p>
+<pre><code>"regras": [
+  {
+    "manual": "endereco",
+    "titulo": "Comprovante em nome de terceiros",
+    "texto": "Cole aqui o texto da regra exatamente como está no OneNote.",
+    "tags": ["terceiro", "comprovante de residência"]
+  }
+]</code></pre>
+        <p>Para melhorar o reconhecimento de um assunto, inclua novos termos em <code>palavrasChave</code> do manual.
+           Ao salvar o arquivo no GitHub, o site é publicado de novo automaticamente em cerca de 2 minutos.</p>
+    </section>
+}
+
+@code {
+    private RegramentoSearchEngine? engine;
+    private string? erro;
+    private string filtro = "";
+    private readonly HashSet<string> expandidos = new();
+
+    private IEnumerable<Manual> Filtrados
+    {
+        get
+        {
+            if (engine is null) return Enumerable.Empty<Manual>();
+            var f = TextNormalizer.Normalize(filtro);
+            var lista = engine.Base.Manuais.OrderBy(m => TextNormalizer.Normalize(m.Titulo), StringComparer.Ordinal);
+            if (f.Length == 0) return lista;
+            return lista.Where(m =>
+                TextNormalizer.Normalize($"{m.Titulo} {m.Categoria} {m.Descricao}").Contains(f) ||
+                m.PalavrasChave.Any(k => TextNormalizer.Normalize(k).Contains(f)));
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { engine = await KnowledgeBase.GetEngineAsync(); }
+        catch (Exception ex) { erro = ex.Message; }
+    }
+
+    private void Alternar(string id)
+    {
+        if (!expandidos.Remove(id)) expandidos.Add(id);
+    }
+}

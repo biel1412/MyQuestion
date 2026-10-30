@@ -1,0 +1,393 @@
+@page "/"
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+@inject KnowledgeBaseService KnowledgeBase
+
+<PageTitle>Consultar · MyQuestion</PageTitle>
+
+<section class="hero">
+    <h1>Qual é a dúvida?</h1>
+    <p>Cole o print do Teams com <kbd>Ctrl</kbd> + <kbd>V</kbd>, arraste o arquivo ou anexe uma imagem/PDF.
+       O sistema lê o texto e indica o regramento certo.</p>
+</section>
+
+<div class="workspace">
+    <section class="panel input-panel">
+        <input type="file" @ref="fileInput" accept="image/*,application/pdf" multiple hidden />
+        <div class="dropzone @(dragging ? "is-dragging" : "")" @ref="dropZone" tabindex="0" role="button"
+             @onclick="PickFile" @onkeydown="OnDropZoneKey">
+            <div class="dropzone-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="30" height="30"><path fill="currentColor" d="M19 3H5a2 2 0 0 0-2 2v14c0 1.1.9 2 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2Zm0 16H5V5h14v14Zm-5-7-3 3.9-2-2.4L6 17h12l-4-5Zm-5.5-1A1.5 1.5 0 1 0 8.5 8a1.5 1.5 0 0 0 0 3Z"/></svg>
+            </div>
+            <strong>Cole, arraste ou clique para anexar</strong>
+            <span>Prints (PNG, JPG) e PDFs · vários arquivos de uma vez</span>
+        </div>
+
+        @if (anexos.Count > 0)
+        {
+            <ul class="attachments">
+                @foreach (var a in anexos)
+                {
+                    <li class="attachment @(a.Erro is not null ? "has-error" : a.Concluido ? "is-done" : "")">
+                        <div class="thumb">
+                            @if (!string.IsNullOrEmpty(a.Preview))
+                            {
+                                <img src="@a.Preview" alt="Prévia de @a.Nome" />
+                            }
+                            else
+                            {
+                                <span>@(a.Tipo == "pdf" ? "PDF" : "IMG")</span>
+                            }
+                        </div>
+                        <div class="attachment-body">
+                            <div class="attachment-title">
+                                <span class="file-name" title="@a.Nome">@a.Nome</span>
+                                <button type="button" class="link-button" @onclick="() => RemoverAnexo(a)" aria-label="Remover @a.Nome">Remover</button>
+                            </div>
+                            @if (a.Erro is not null)
+                            {
+                                <span class="attachment-status error">@a.Erro</span>
+                            }
+                            else if (a.Concluido)
+                            {
+                                <span class="attachment-status ok">Texto lido · @a.Texto.Length caracteres</span>
+                            }
+                            else
+                            {
+                                <div class="progress"><div class="progress-bar" style="width:@(a.Progresso)%"></div></div>
+                                <span class="attachment-status">@a.Status · @a.Progresso%</span>
+                            }
+                        </div>
+                    </li>
+                }
+            </ul>
+        }
+
+        <label class="field-label" for="pergunta">Texto da dúvida <small>(preenchido pelo print, pode editar ou digitar)</small></label>
+        <textarea id="pergunta" class="question" rows="8" placeholder="Ex.: Comprovante de residência em nome do pai serve para o cadastro?"
+                  @bind="pergunta" @bind:event="oninput" @onkeydown="OnQuestionKey"></textarea>
+
+        <div class="actions">
+            <button type="button" class="btn primary" @onclick="Buscar" disabled="@(Processando || string.IsNullOrWhiteSpace(pergunta))">
+                @(Processando ? "Lendo anexos…" : "Buscar regramento")
+            </button>
+            <button type="button" class="btn ghost" @onclick="Limpar" disabled="@(anexos.Count == 0 && string.IsNullOrWhiteSpace(pergunta))">Limpar</button>
+            <span class="hint"><kbd>Ctrl</kbd> + <kbd>Enter</kbd> busca</span>
+        </div>
+    </section>
+
+    <section class="panel result-panel" aria-live="polite">
+        @if (erroBase is not null)
+        {
+            <div class="alert error">Não foi possível carregar a base de regras: @erroBase</div>
+        }
+
+        @if (resultado is null)
+        {
+            <div class="placeholder">
+                <h2>Como funciona</h2>
+                <ol class="steps">
+                    <li><span>1</span><div><strong>Anexe o print</strong><p>Use <kbd>Win</kbd> + <kbd>Shift</kbd> + <kbd>S</kbd> no Teams e cole aqui. PDFs também são aceitos.</p></div></li>
+                    <li><span>2</span><div><strong>O texto é lido</strong><p>OCR em português direto no navegador. Revise o texto se precisar.</p></div></li>
+                    <li><span>3</span><div><strong>Regramento indicado</strong><p>O sistema compara com a Central de Regramento e mostra o manual e os trechos de regra.</p></div></li>
+                </ol>
+                @if (engine is not null)
+                {
+                    <p class="muted">Base carregada: @engine.Base.Manuais.Count manuais · @engine.Base.Regras.Count trechos de regra.</p>
+                }
+            </div>
+        }
+        else if (!resultado.TemResultado)
+        {
+            <div class="placeholder">
+                <h2>Nada encontrado</h2>
+                <p>Não identifiquei termos da Central de Regramento nesse texto. Tente escrever a dúvida com outras palavras (ex.: “comprovante de renda”, “contrato social”, “certidão de casamento”).</p>
+                <a class="btn ghost" href="https://konigmauricio1-dotcom.github.io/regramentos/" target="_blank" rel="noopener noreferrer">Abrir Central de Regramento ↗</a>
+            </div>
+        }
+        else
+        {
+            @if (resultado.Sinais.Count > 0)
+            {
+                <div class="chips signals">
+                    @foreach (var s in resultado.Sinais)
+                    {
+                        <span class="chip signal-@s.Codigo.ToLowerInvariant()">@(s.Codigo == "PDF" ? "📄 " : "")@s.Rotulo</span>
+                    }
+                </div>
+            }
+
+            @if (resultado.Manuais.Count > 0)
+            {
+                var principal = resultado.Manuais[0];
+                <article class="best-match">
+                    <div class="best-header">
+                        <span class="eyebrow">Manual indicado</span>
+                        <span class="category">@principal.Manual.Categoria</span>
+                    </div>
+                    <h2>@principal.Manual.Titulo</h2>
+                    <p>@principal.Manual.Descricao</p>
+
+                    <div class="confidence">
+                        <div class="confidence-track"><div class="confidence-fill" style="width:@(principal.Confianca)%"></div></div>
+                        <span>@principal.Confianca% de aderência</span>
+                    </div>
+
+                    @if (principal.TermosEncontrados.Count > 0)
+                    {
+                        <div class="chips">
+                            @foreach (var t in principal.TermosEncontrados.Take(10))
+                            {
+                                <span class="chip">@t</span>
+                            }
+                        </div>
+                    }
+
+                    <div class="actions">
+                        <a class="btn primary" href="@principal.Manual.Url" target="_blank" rel="noopener noreferrer">Abrir no SharePoint ↗</a>
+                        <button type="button" class="btn ghost" @onclick="CopiarResposta">@(copiado ? "Copiado ✓" : "Copiar resposta")</button>
+                    </div>
+                </article>
+
+                @if (resultado.Manuais.Count > 1)
+                {
+                    <h3 class="section-title">Também pode estar em</h3>
+                    <ul class="match-list">
+                        @foreach (var m in resultado.Manuais.Skip(1))
+                        {
+                            <li>
+                                <a href="@m.Manual.Url" target="_blank" rel="noopener noreferrer">
+                                    <div>
+                                        <strong>@m.Manual.Titulo</strong>
+                                        <small>@string.Join(" · ", m.TermosEncontrados.Take(4))</small>
+                                    </div>
+                                    <span class="score">@m.Confianca%</span>
+                                </a>
+                            </li>
+                        }
+                    </ul>
+                }
+            }
+
+            @if (resultado.Regras.Count > 0)
+            {
+                <h3 class="section-title">Trechos de regra encontrados</h3>
+                @foreach (var r in resultado.Regras)
+                {
+                    <article class="rule">
+                        <header>
+                            <strong>@r.Regra.Titulo</strong>
+                            @if (r.Manual is not null)
+                            {
+                                <a href="@r.Manual.Url" target="_blank" rel="noopener noreferrer" class="chip">@r.Manual.Titulo ↗</a>
+                            }
+                        </header>
+                        <p>
+                            @foreach (var part in r.Trecho)
+                            {
+                                if (part.Destaque)
+                                {
+                                    <mark>@part.Texto</mark>@(" ")
+                                }
+                                else
+                                {
+                                    <text>@part.Texto</text>
+                                }
+                            }
+                        </p>
+                    </article>
+                }
+            }
+            else if (engine is not null && engine.Base.Regras.Count == 0)
+            {
+                <div class="alert info">
+                    A base ainda não tem trechos de regra, então o sistema indica <strong>qual manual</strong> consultar.
+                    Para respostas diretas, cadastre trechos do OneNote em <a href="base">Base de regras</a>.
+                </div>
+            }
+        }
+    </section>
+</div>
+
+@code {
+    private sealed class Anexo
+    {
+        public string Id { get; init; } = "";
+        public string Nome { get; init; } = "";
+        public string Tipo { get; init; } = "";
+        public string? Preview { get; set; }
+        public int Progresso { get; set; }
+        public string Status { get; set; } = "Na fila";
+        public string Texto { get; set; } = "";
+        public string? Erro { get; set; }
+        public bool Concluido { get; set; }
+    }
+
+    private readonly List<Anexo> anexos = new();
+    private ElementReference dropZone;
+    private ElementReference fileInput;
+    private DotNetObjectReference<Home>? selfRef;
+    private RegramentoSearchEngine? engine;
+    private SearchResult? resultado;
+    private string pergunta = "";
+    private string? erroBase;
+    private bool dragging;
+    private bool copiado;
+
+    private bool Processando => anexos.Any(a => !a.Concluido && a.Erro is null);
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            engine = await KnowledgeBase.GetEngineAsync();
+        }
+        catch (Exception ex)
+        {
+            erroBase = ex.Message;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        selfRef = DotNetObjectReference.Create(this);
+        await JS.InvokeVoidAsync("myq.init", selfRef, dropZone, fileInput);
+    }
+
+    private async Task PickFile() => await JS.InvokeVoidAsync("myq.pick", fileInput);
+
+    private async Task OnDropZoneKey(KeyboardEventArgs e)
+    {
+        if (e.Key is "Enter" or " ") await PickFile();
+    }
+
+    private void OnQuestionKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && (e.CtrlKey || e.MetaKey)) Buscar();
+    }
+
+    // ---- Chamadas vindas do JavaScript (captura/OCR) ----
+
+    [JSInvokable]
+    public async Task FileAdded(string id, string nome, string tipo)
+    {
+        anexos.Add(new Anexo { Id = id, Nome = nome, Tipo = tipo });
+        resultado = null;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public async Task FilePreview(string id, string preview)
+    {
+        var a = Find(id);
+        if (a is null) return;
+        a.Preview = preview;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public async Task FileProgress(string id, int progresso, string status)
+    {
+        var a = Find(id);
+        if (a is null) return;
+        a.Progresso = Math.Clamp(progresso, 0, 100);
+        a.Status = status;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public async Task FileDone(string id, string texto)
+    {
+        var a = Find(id);
+        if (a is null) return;
+        a.Texto = (texto ?? "").Trim();
+        a.Concluido = true;
+        a.Progresso = 100;
+        if (a.Texto.Length > 0)
+            pergunta = string.IsNullOrWhiteSpace(pergunta) ? a.Texto : $"{pergunta.TrimEnd()}\n\n{a.Texto}";
+        else
+            a.Erro = "Nenhum texto encontrado neste arquivo.";
+
+        if (!Processando) Buscar();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public async Task FileFailed(string id, string mensagem)
+    {
+        var a = Find(id);
+        if (a is null) return;
+        a.Erro = mensagem;
+        if (!Processando && !string.IsNullOrWhiteSpace(pergunta)) Buscar();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public async Task DragState(bool ativo)
+    {
+        dragging = ativo;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private Anexo? Find(string id) => anexos.FirstOrDefault(a => a.Id == id);
+
+    // ---- Ações ----
+
+    private void Buscar()
+    {
+        if (engine is null || string.IsNullOrWhiteSpace(pergunta)) return;
+        resultado = engine.Search(pergunta);
+        copiado = false;
+    }
+
+    private void RemoverAnexo(Anexo a)
+    {
+        anexos.Remove(a);
+        if (!string.IsNullOrEmpty(a.Texto))
+        {
+            pergunta = pergunta.Replace(a.Texto, "").Trim();
+            resultado = string.IsNullOrWhiteSpace(pergunta) ? null : engine?.Search(pergunta);
+        }
+    }
+
+    private void Limpar()
+    {
+        anexos.Clear();
+        pergunta = "";
+        resultado = null;
+        copiado = false;
+    }
+
+    private async Task CopiarResposta()
+    {
+        if (resultado is null || resultado.Manuais.Count == 0) return;
+        var principal = resultado.Manuais[0].Manual;
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine($"Essa dúvida está no regramento \"{principal.Titulo}\" ({principal.Categoria}):");
+        sb.AppendLine(principal.Url);
+
+        if (resultado.Regras.Count > 0)
+        {
+            var r = resultado.Regras[0];
+            sb.AppendLine();
+            sb.AppendLine($"Trecho: {r.Regra.Titulo}");
+            sb.AppendLine(r.Regra.Texto.Length > 400 ? r.Regra.Texto[..400] + "…" : r.Regra.Texto);
+        }
+
+        var outros = resultado.Manuais.Skip(1).Take(2).Select(m => m.Manual.Titulo).ToList();
+        if (outros.Count > 0)
+        {
+            sb.AppendLine();
+            sb.AppendLine($"Vale conferir também: {string.Join(", ", outros)}.");
+        }
+
+        copiado = await JS.InvokeAsync<bool>("myq.copy", sb.ToString().Trim());
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try { await JS.InvokeVoidAsync("myq.dispose"); } catch (JSDisconnectedException) { }
+        selfRef?.Dispose();
+    }
+}
